@@ -1,0 +1,33 @@
+#!/usr/local/bin/expect
+
+set timeout -1
+
+set ip [lindex $argv 0]
+spawn /usr/bin/ssh -oKexAlgorithms=+diffie-hellman-group1-sha1 -c aes128-cbc,aes192-ctr user@$ip
+sleep 1
+#expect "Password:"
+send "hvgdl3p@\r" 
+expect ">"
+send "enable\r"
+expect "Password:"
+send "gplrt4@6\r"
+expect "#"
+send "sh version\r"
+expect "#"
+send "sh health\r"
+expect "#"
+send "display-alarms\r"
+expect "#"
+send "display-current-cfg-version\r"
+expect "#"
+send "display-running-cfg-version\r"
+expect "#"
+send "verify-config\r"
+expect "#"
+send "sh sip invite\r"
+expect "#"
+send "exit\r"
+expect ">"
+send "exit\r"
+expect eof
+

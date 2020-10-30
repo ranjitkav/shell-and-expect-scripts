@@ -1,0 +1,23 @@
+#!/usr/bin/expect
+
+set timeout -1
+
+set ip [lindex $argv 0]
+spawn /usr/bin/ssh  -o StrictHostKeyChecking=no user@$ip
+sleep 1
+#expect "Password:"
+send "hvgdl3p@\r" 
+expect ">"
+send "enable\r"
+expect "Password:"
+send "gplrt4@6\r"
+expect "#"
+send "sh version\r"
+expect "#"
+send "sh health\r"
+expect "#"
+send "exit\r"
+expect ">"
+send "exit\r"
+expect eof
+

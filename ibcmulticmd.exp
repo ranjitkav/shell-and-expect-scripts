@@ -1,0 +1,28 @@
+#!/usr/local/bin/expect
+
+set timeout -1
+
+set f [open "cmdslist"]
+set commands [split [read $f] "\n"]
+close $f
+
+set ip [lindex $argv 0]
+spawn /usr/bin/ssh  -o StrictHostKeyChecking=no user@$ip
+sleep 1
+#expect "Password:"
+send "hvgdl3p@\r" 
+expect ">"
+send "enable\r"
+expect "Password:"
+send "gplrt4@6\r"
+foreach cmd $commands {
+   expect "#"
+   send "$cmd\r"
+   sleep 10
+}
+expect "#"
+send "exit\r"
+expect ">"
+send "exit\r"
+expect eof
+

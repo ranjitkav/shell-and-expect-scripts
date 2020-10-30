@@ -1,0 +1,16 @@
+#!/usr/bin/expect
+
+set timeout 60
+
+set user [lindex $argv 1]
+set ip [lindex $argv 0]
+set password [lindex $argv 2]
+spawn /usr/bin/ssh -o StrictHostKeyChecking=no $user@$ip
+expect {
+  "password" { send "$password\r" }
+  "ibc"  { send "echo\r" }
+}
+expect "ibc"
+send "show sip invite\r"
+expect "ibc"
+send "exit\r\r"

@@ -1,0 +1,17 @@
+#!/usr/bin/expect
+
+set timeout 60
+
+set ip [lindex $argv 0]
+spawn /usr/bin/ssh -o StrictHostKeyChecking=no user@$ip
+expect "password:"
+send "ITN2jags\r"
+expect ">"
+send "enable\r"
+expect "Password:"
+send "ITN2volte\r"
+expect "#"
+sleep 1
+send "show version\r"
+send "exit\r"
+send "exit\r"
