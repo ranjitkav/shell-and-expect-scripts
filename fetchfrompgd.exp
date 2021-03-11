@@ -1,0 +1,30 @@
+#!/usr/bin/expect
+
+set timeout -1
+
+set ip [lindex $argv 0]
+set i [lindex $argv 1]
+spwan /usr/bin/sftp -o StrictHostKeyChecking=no root@$ip
+expect "id_rsa':"
+send "siemens\r"
+send "lcd logs/\r"
+expect "sftp>"
+send "mget /opt/notifs/logs/instance$i/notifs-discarded_letter.log.*\r"
+sleep 2
+expect "sftp>"
+send "mget /opt/notifs/logs/instance$i/notis-dead_letterlog.*\r"
+sleep 2
+expect "sftp>"
+send "mget /opt/notifs/logs/instance$i/notifs-counting.log.*\r"
+sleep 2
+expect "sftp>"
+send "mget /opt/notifs/logs/instance$i/notifs-config_data.log.*\r"
+sleep 2
+expect "sftp>"
+send "mget /opt/notifs/logs/instance$i/notifs-statistics.log.*\r"
+sleep 2
+expect "sftp>"
+send "mget /opt/notifs/logs/instance$i/notifs.log.*\r"
+expect "sftp>"
+send "bye\r"
+

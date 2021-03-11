@@ -1,0 +1,24 @@
+#!/usr/bin/expect 
+
+set timeout -1
+
+set ip [lindex $argv 0]
+set todaydate [lindex $argv 1]
+set datetoday [lindex $argv 2]
+spawn /usr/bin/sftp -o StrictHostKeyChecking=no root@$ip:/opt/sdf/log
+expect "id_rsa':"
+send "siemens\r"
+expect "sftp>"
+send "get af02_alarm_log.$todaydate\r"
+sleep 1
+send "get af03_stats_log.$todaydate\r"
+sleep 1
+send "cd $datetoday\r"
+send "get synchronisation.log\r"
+sleep 1
+send "get failover.log\r"
+sleep 1
+send "get connectivity.log\r" 
+sleep 1
+expect "#"
+eof

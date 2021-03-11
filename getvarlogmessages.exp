@@ -1,0 +1,17 @@
+#!/usr/bin/expect 
+
+set timeout -1
+
+set ip [lindex $argv 0]
+set mon [lindex $argv 1]
+set day [lindex $argv 2]
+set space "  "
+append date1 $mon $space $day
+spawn /usr/bin/ssh -o StrictHostKeyChecking=no root@$ip "cat /var/log/messages | grep '$date1' >> messages.log"
+spawn /usr/bin/scp -o StrictHostkeyChecking=no root@$ip:/export/home/sufuser/messages.log logs/$ip-messages.log
+spawn /usr/bin/ssh -o StrictHostKeyChecking=no root@$ip "rm -rf /export/home/sufuser/messages.log"
+
+sleep 1
+expect "id_rsa':"
+send "siemens\r"
+expect "#"
