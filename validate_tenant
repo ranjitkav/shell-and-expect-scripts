@@ -1,0 +1,584 @@
+#!/bin/bash                              
+##########################################################
+#     Name: validate_tenant    Author: mh6522
+##########################################################
+VERSION="2.1"
+
+echo
+echo "Tenant Validation (Version: $VERSION)"
+echo
+
+ENVFILE=$1
+NAME=""
+AIC="3"
+TENANT=`basename $1 | cut -f1 -d_`
+
+
+#---------------------------------------------------------------------
+function vtype {
+HOST=$1
+
+case $HOST in
+
+ *"ccfx"*)
+    VTYPE="ccf"
+    ;;
+
+ *"ctbe"*)
+    VTYPE="udr"
+    ;;
+
+ *"ctsf"*)
+    VTYPE="cts"
+    ;;
+
+ *"mrfv"*)
+    VTYPE="mrf"
+    ;;
+
+ *"prsf"*)
+    VTYPE="prs"
+    ;;
+
+ *"scas"*)
+    VTYPE="scas"
+    ;;
+
+ *"ssdb"*)
+    VTYPE="ssdb"
+    ;;
+
+ *"tsdb"*)
+    VTYPE="3cdb"
+    ;;
+
+ *"vsbc"*)
+    VTYPE="sbc"
+    ;;
+
+ *"vnfm"*)
+    VTYPE="vnfm"
+    ;;
+
+ *)
+    VTYPE="NONE"
+    echo "HOST -> $1 has invalid VTYPE!"
+    exit
+    ;;
+
+esac
+}
+
+#---------------------------------------------------------------------
+function check_keypair {
+  echo "   Checking KEYPAIR ..."
+
+  if [ $AIC -eq "3" ]
+   then
+    openstack keypair list | grep ${TENANT}_InternalKey > /tmp/.$KEYPAIR.$$
+  else
+    nova keypair-list | grep ${TENANT}_InternalKey > /tmp/.$KEYPAIR.$$
+  fi
+
+  if grep $TENANT /tmp/.$KEYPAIR.$$
+   then
+    echo -e "      \e[31mKeypair '${TENANT}_InternalKey' exists!\e[39m"
+  else
+    echo "      Keypair '${TENANT}_InternalKey' does not exist!"
+  fi
+
+  echo
+} 
+
+
+#---------------------------------------------------------------------
+function check_instances {
+  echo "   Checking INSTANCE requirements ..."
+
+  INSTANCES_REQUIRED=0
+  INSTANCES_TOTAL=0
+  INSTANCES_USED=0
+  INSTANCES_AVAILABLE=0
+
+  if [ $AIC == "3" ]
+   then
+    INSTANCES_TOTAL=`nova limits | grep Instances | cut -f4 -d'|'`
+    INSTANCES_USED=`nova limits | grep Instances | cut -f3 -d'|'`
+    INSTANCES_AVAILABLE=`expr $INSTANCES_TOTAL - $INSTANCES_USED` 
+  else
+    INSTANCES_TOTAL=`nova absolute-limits | grep maxTotalInstances | cut -f3 -d'|' | awk '{ print $1}'`
+    INSTANCES_USED=`nova absolute-limits | grep totalInstancesUsed | cut -f3 -d'|' | awk '{ print $1}'`
+    INSTANCES_AVAILABLE=`expr $INSTANCES_TOTAL - $INSTANCES_USED` 
+  fi
+
+  INSTANCES_REQUIRED=0
+
+  for VMI in `cat /tmp/.vminfo.$$`
+   do
+    CNT=`echo $VMI | cut -f2 -d:` 
+    INSTANCES_REQUIRED=`expr $INSTANCES_REQUIRED + $CNT`
+   done
+
+  echo "      INSTANCES Required  - " $INSTANCES_REQUIRED
+  echo "      INSTANCES Available - " $INSTANCES_AVAILABLE
+  if [ $INSTANCES_REQUIRED -gt $INSTANCES_AVAILABLE ]
+   then
+    echo -e "      \e[31mINSTANCES CHECK FAILED!\e[39m"
+  fi
+
+  echo 
+}
+
+#---------------------------------------------------------------------
+function check_cpus {
+  echo "   Checking CPU requirements ..."
+
+  CPUS_REQUIRED=0
+  CPUS_TOTAL=0
+  CPUS_USED=0
+  CPUS_AVAILABLE=0
+
+  if [ $AIC == "3" ]
+   then
+    CPUS_TOTAL=`nova limits | grep Cores | cut -f4 -d'|'`
+    CPUS_USED=`nova limits | grep Cores | cut -f3 -d'|'`
+    CPUS_AVAILABLE=`expr $CPUS_TOTAL - $CPUS_USED` 
+  else
+    CPUS_TOTAL=`nova absolute-limits | grep maxTotalCores | cut -f3 -d'|'`
+    CPUS_USED=`nova absolute-limits | grep totalCoresUsed | cut -f3 -d'|'`
+    CPUS_AVAILABLE=`expr $CPUS_TOTAL - $CPUS_USED` 
+  fi
+
+  for VMI in `cat /tmp/.vminfo.$$`
+   do
+    CNT=`echo $VMI | cut -f2 -d:` 
+    CPUS=`echo $VMI | cut -f3 -d: | cut -f2 -d'c' | cut -f1 -d'r'` 
+    NUM=`expr $CPUS \* $CNT`
+    CPUS_REQUIRED=`expr $CPUS_REQUIRED + $NUM`
+   done
+
+  echo "      CPUs Required  - " $CPUS_REQUIRED
+  echo "      CPUs Available - " $CPUS_AVAILABLE
+  if [ $CPUS_REQUIRED -gt $CPUS_AVAILABLE ]
+   then
+    echo -e "      \e[31mCPU CHECK FAILED!\e[39m"
+  fi
+
+  echo 
+}
+
+
+#---------------------------------------------------------------------
+function check_ram {
+  echo "   Checking RAM requirements ..."
+
+  RAM_REQUIRED=0
+  RAM_TOTAL=0
+  RAM_USED=0
+  RAM_AVAILABLE=0
+
+  if [ $AIC == "3" ]
+   then
+    RAM_TOTAL=`nova limits | grep RAM | cut -f4 -d'|'`
+    RAM_USED=`nova limits | grep RAM | cut -f3 -d'|'`
+    RAM_AVAILABLE=`expr $RAM_TOTAL - $RAM_USED` 
+  else
+    RAM_TOTAL=`nova absolute-limits | grep maxTotalRAMSize | cut -f3 -d'|'`
+    RAM_USED=`nova absolute-limits | grep totalRAMUsed | cut -f3 -d'|'`
+    RAM_AVAILABLE=`expr $RAM_TOTAL - $RAM_USED` 
+  fi
+
+  RAM_TOTAL=`expr $RAM_TOTAL / 1024`
+  RAM_USED=`expr $RAM_USED / 1024`
+  RAM_AVAILABLE=`expr $RAM_AVAILABLE / 1024`
+
+  for VMI in `cat /tmp/.vminfo.$$`
+   do
+    CNT=`echo $VMI | cut -f2 -d:` 
+    RAM=`echo $VMI | cut -f3 -d: | cut -f2 -d'r' | cut -f1 -d'd'` 
+    NUM=`expr $RAM \* $CNT`
+    RAM_REQUIRED=`expr $RAM_REQUIRED + $NUM`
+   done
+
+  echo "      RAM Required  - " $RAM_REQUIRED gb
+  echo "      RAM Available - " $RAM_AVAILABLE gb
+  if [ $RAM_REQUIRED -gt $RAM_AVAILABLE ]
+   then
+    echo -e "      \e[31mRAM CHECK FAILED!\e[39m"
+  fi
+  echo 
+}
+
+
+#---------------------------------------------------------------------
+function check_volumes {
+  echo "   Checking VOLUME requirements ..."
+  VOLUMES_REQUIRED=0 
+
+  VOLUMES_TOTAL=`cinder absolute-limits | grep maxTotalVolumes | cut -f3 -d'|'`
+  VOLUMES_USED=`cinder absolute-limits | grep totalVolumesUsed | cut -f3 -d'|'`
+  VOLUMES_AVAILABLE=`expr $VOLUMES_TOTAL - $VOLUMES_USED` 
+
+  for VMI in `cat /tmp/.vminfo.$$`
+   do
+    CNT=`echo $VMI | cut -f2 -d:` 
+    VOLUMES_REQUIRED=`expr $VOLUMES_REQUIRED + $CNT`
+   done
+
+  echo "      VOLUMES Required  - " $VOLUMES_REQUIRED
+  echo "      VOLUMES Available - " $VOLUMES_AVAILABLE
+
+  if [ $VOLUMES_REQUIRED -gt $VOLUMES_AVAILABLE ]
+   then
+    echo -e "      \e[31mVOLUMES CHECK FAILED!\e[39m"
+  fi
+  echo
+}
+
+
+#---------------------------------------------------------------------
+function check_storage {
+  echo "   Checking STORAGE requirements ..."
+  STORAGE_REQUIRED=0 
+
+  STORAGE_TOTAL=`cinder absolute-limits | grep maxTotalVolumeGigabytes | cut -f3 -d'|'`
+  STORAGE_USED=`cinder absolute-limits | grep totalGigabytesUsed | cut -f3 -d'|'`
+  STORAGE_AVAILABLE=`expr $STORAGE_TOTAL - $STORAGE_USED` 
+echo $STORAGE_AVAILABLE
+
+  for VMI in `cat /tmp/.vminfo.$$`
+   do
+    CNT=`echo $VMI | cut -f2 -d:` 
+    STORAGE=`echo $VMI | cut -f3 -d: | cut -f2 -d'.' | cut -f2 -d'd' | cut -f1 -d's'` 
+echo $STORAGE
+exit
+    NUM=`expr $STORAGE \* $CNT`
+    STORAGE_REQUIRED=`expr $STORAGE_REQUIRED + $NUM`
+   done
+
+  echo "      STORAGE Required  - " $STORAGE_REQUIRED gb
+  echo "      STORAGE Available - " $STORAGE_AVAILABLE gb
+  if [ $STORAGE_REQUIRED -gt $STORAGE_AVAILABLE ]
+   then
+    echo -e "      \e[31mSTORAGE CHECK FAILED!\e[39m"
+  fi
+  echo
+}
+
+
+#---------------------------------------------------------------------
+function check_image {
+  echo "   Checking IMAGE requirements ..."
+
+  if [ $AIC -eq "3" ]
+   then
+    echo -e "     \e[31m'openstack image list' not working - check with Openstack Dashboard!\e[39m"
+    #openstack image list > /tmp/.imagelist.$$
+  else
+    nova image-list > /tmp/.imagelist.$$
+
+  if [ "$VTYPE" == "ccf" ]
+   then
+    for IMAGE in `grep "_image" $ENVFILE | cut -f2 -d,`
+     do
+      echo $IMAGE >> /tmp/.imageconfig.$$
+     done
+
+  else
+    for IMAGE in `grep "image_name:" $ENVFILE | cut -f2 -d":" | tr "'" " "`
+     do
+      echo $IMAGE >> /tmp/.imageconfig.$$
+     done
+  fi
+
+  for IMAGE in `cat /tmp/.imageconfig.$$`
+   do
+    if ! grep $IMAGE /tmp/.imagelist.$$ > /dev/null
+     then
+      echo -e "      \e[31mImage '$IMAGE' does not exist!\e[39m"
+    else
+      echo "      Image '$IMAGE' exists!"
+    fi
+
+   done
+  fi
+
+  echo
+}
+
+
+#---------------------------------------------------------------------
+function check_flavors {
+  echo "   Checking FLAVOR requirements ..."
+
+  if [ $AIC -eq "3" ]
+   then
+    openstack flavor list | cut -f3 -d'|' > /tmp/.flavorlist.$$
+  else
+    nova flavor-list | cut -f3 -d'|' > /tmp/.flavorlist.$$
+  fi
+
+  if [ $VTYPE == "ccf" ]
+   then
+    for FLAVOR in `grep flavor $ENVFILE | cut -f2 -d,`
+     do
+      echo $FLAVOR >> /tmp/.flavorconfig.$$
+     done
+
+  else
+    for FLAVOR in `grep -v "^#" $ENVFILE | grep flavor_name: | cut -f2 -d":" | tr "'" " "`
+     do
+      echo $FLAVOR >> /tmp/.flavorconfig.$$
+     done
+  fi
+
+  for FLAVOR in `cat /tmp/.flavorconfig.$$`
+   do
+    grep $FLAVOR /tmp/.flavorlist > /tmp/.grep
+    if [ ! -s /tmp/.grep ]
+     then
+      echo -e "      \e[31mFlavor '$FLAVOR' does not exist!\e[39m"
+    else
+      echo "      Flavor '${FLAVOR}' exists!"
+    fi
+   done
+
+  echo
+}
+
+
+#---------------------------------------------------------------------
+function check_http {
+  echo "   Checking HTTP requirements ..."
+
+  if [ $VTYPE == "vCTS" -o $VTYPE == "vPRS" ]
+   then
+    CONFIG=`grep "install_config_file:" $ENVFILE | awk '{ print $2}'|cut -f2 -d'"'`
+    grep "install_config_file" $ENVFILE | grep vCTS > /tmp/.config
+    PROV=`grep "install_prov_file:" $ENVFILE | awk '{ print $2}'|cut -f2 -d'"'`
+    grep "install_prov_file:" $ENVFILE | grep vCTS > /tmp/.prov
+  fi
+
+  if [ $VTYPE == "vSBC" ]
+   then
+    CONFIG=`grep "install_config_file" $IDIR/templates/$NAME*env |awk '{ print $2}'|cut -f2 -d'"'`
+    grep "install_config_file" $IDIR/templates/$NAME*env > /tmp/.config
+    PROV=`grep "install_prov_file" $IDIR/templates/$NAME*env | awk '{ print $2}' | cut -f2 -d'"'`
+    grep "install_prov_file" $IDIR/templates/$NAME*env > /tmp/.prov
+  fi
+
+  CONFIGIP=`echo $CONFIG | cut -f3 -d'/'`
+  PROVIP=`echo $PROV | cut -f3 -d'/'`
+  LCMAIP=`ifconfig eth0|grep "inet addr:" | awk '{print $2}' | cut -f2 -d:`
+
+  if [ ! "x$CONFIGIP" == "x$LCMAIP" ]
+   then
+      echo -e "      \e[31m'install_config_file' is not correct!\e[39m"
+  fi
+
+  if [ -s /tmp/.config ]
+   then
+      echo -e "      \e[31m'install_config_file' is not correct!\e[39m"
+  fi
+
+  if [ ! "x$PROVIP" == "x$LCMAIP" ]
+   then
+      echo -e "      \e[31m'install_prov_file' is not correct!\e[39m"
+  fi
+
+  if [ -s /tmp/.prov ]
+   then
+      echo -e "      \e[31m'install_prov_file' is not correct!\e[39m"
+  fi
+
+  echo
+}
+
+
+#---------------------------------------------------------------------
+function check_ipaddress {
+  echo "   Checking IP Addresses ..."
+
+  touch /tmp/.ip.$$
+  if [ "$VTYPE" == "ccf" ]
+   then
+    for IP in `grep '_ip_' $ENVFILE | cut -f2 -d,`
+     do
+      echo $IP >> /tmp/.ip.$$
+     done
+  else
+    for IP in `awk '/ips:/,/^$/ { print }' ${ENVFILE} | grep '-' | cut -f2 -d'"' | grep '135.*'`
+     do
+      echo $IP >> /tmp/.ip.$$
+     done
+  fi
+
+  if [ $AIC -eq "3" ]
+   then
+    for PIP in ` openstack port list | cut -f5 -d'|' | grep ip_address | cut -f8 -d'"' | grep '135.*'`
+     do
+      if grep '${PIP}$' /tmp/.ip.$$ >/dev/null
+       then
+        echo -e "      \e[31mIP '$PIP' is being used!\e[39m"
+      else
+        echo "      IP '$PIP' not being used!"
+      fi
+     done
+  else
+    for PIP in ` neutron port-list | cut -f5 -d'|' | grep ip_address | cut -f8 -d'"' | grep '135.*'`
+     do
+      if grep '${PIP}$' /tmp/.ip.$$ >/dev/null
+       then
+        echo -e "      \e[31mIP '$PIP' is being used!\e[39m"
+      else
+        echo "      IP '$PIP' not being used!"
+      fi
+     done
+  fi
+
+  echo 
+}
+
+
+#---------------------------------------------------------------------
+function check_network_ids {
+  echo "   Checking Network IDs ..."
+  neutron net-list | cut -f2 -d'|' > /tmp/.netlist
+
+  if [ $VTYPE == "vCTS" -o $VTYPE == "vPRS" ]
+   then
+    for id in `grep id: $ENVFILE | grep -v -e subnet_id: -e tenant_id: |cut -f2 -d'"'`
+     do
+      grep $id /tmp/.netlist > /tmp/.ngrep
+      if [ ! -s "/tmp/.ngrep" ]
+       then
+        echo -e "      \e[31mNetwork ID '$id' does not exist!\e[39m"
+      fi
+     done
+  fi
+
+  if [ $VTYPE == "vSBC" ]
+   then
+    for id in `grep id: $IDIR/templates/$NAME*env | grep -v -e subnet_id: -e tenant_id: |cut -f2 -d'"'`
+     do
+      grep $id /tmp/.netlist > /tmp/.ngrep
+      if [ ! -s "/tmp/.ngrep" ]
+       then
+        echo -e "      \e[31mNetwork ID '$id' does not exist!\e[39m"
+      fi
+     done
+  fi
+
+  echo
+  echo
+}
+
+
+#---------------------------------------------------------------------
+function check_security_groups {
+  echo "   Checking Security Groups ..."
+
+  if [ $AIC -eq "3" ]
+   then
+    openstack secgroup list | cut -f3 -d'|' > /tmp/.secgroups.$$
+  else
+    nova secgroup-list | cut -f3 -d'|' > /tmp/.secgroups.$$
+  fi
+
+  if [ "$VTYPE" == "ccf" ]
+   then
+    for SECURITYGROUP in `grep '_security_group' $ENVFILE | cut -f2 -d,`
+     do
+      echo $SECURITYGROUP >> /tmp/.securityconfig.$$
+     done
+  else
+    for SECURITYGROUP in `grep security_group: $ENVFILE | cut -f2 -d"'"`
+     do
+      echo $SECURITYGROUP >> /tmp/.securityconfig.$$
+     done
+  fi
+
+  for SG in `cat /tmp/.securityconfig.$$`
+   do
+    grep $SG /tmp/.secgroups.$$ > /tmp/.grep.$$
+    if [ ! -s /tmp/.grep.$$ ]
+     then
+      echo -e "      \e[31mSecurity Group '$SG' does not exist!\e[39m"
+    else
+      echo "      Security Group '$SG' exists!"
+    fi
+   done
+
+  echo
+}
+
+
+#---------------------------------------------------------------------
+function collect_vminfo {
+  rm /tmp/.vminfo.$$ 2>/dev/null
+  touch /tmp/.vminfo.$$ 
+
+  if grep vm_counts: $ENVFILE >/dev/null
+   then
+    for VMI in `grep -v '^#' $ENVFILE | grep vm_counts: | cut -f2 -d'{' | cut -f1 -d'}' | sed 's/: /:/g' | sed 's/"//g' | sed 's/,//g'`
+     do
+      NAME=`echo $VMI | cut -f1 -d:`
+      CNT=`echo $VMI | cut -f2 -d:`
+      FLAVOR=`grep ${NAME}_flavor_name: $ENVFILE | cut -f2 -d: | sed 's/ //g' | sed "s/'//g"`
+      echo $NAME:$CNT:$FLAVOR >> /tmp/.vminfo.$$
+     done
+  else
+    for VMI in `grep -v '^#' $ENVFILE | grep count: | sed 's/: /:/g'`
+     do
+      NAME=`echo $VMI | cut -f1 -d: | cut -f1 -d'_'`
+      CNT=`echo $VMI | cut -f2 -d:`
+      FLAVOR=`grep ${NAME}_flavor_name: $ENVFILE | cut -f2 -d: | sed 's/ //g' | sed "s/'//g"`
+      echo $NAME:$CNT:$FLAVOR >> /tmp/.vminfo.$$
+     done
+  fi
+}
+
+
+#---------------------------------------------------------------------
+#---------------------------- MAIN ROUTINE ---------------------------
+if [ "x$OS_USERNAME" == "x" ]
+ then
+  echo 
+  echo "   You must login to Openstack cloud!"
+  echo 
+  exit
+fi
+
+
+#---------------------------------------------------------------------
+NAME=`basename $1`
+vtype $ENVFILE
+
+#REGION=`echo $NAME | cut -c1-5`
+#source ~/openstack.sh $REGION
+
+echo "   NAME: $NAME"
+echo "   REGION: $OS_REGION_NAME"
+echo "   TENANT: $OS_TENANT_NAME"
+echo
+
+STATUS=`openstack --version 2> /tmp/.grep`
+if grep Error /tmp/.grep >/dev/null
+ then
+  AIC="2" 
+fi
+
+collect_vminfo
+
+check_keypair
+check_instances
+check_cpus
+check_ram
+###check_volumes
+###check_storage
+check_flavors
+check_image
+check_ipaddress
+check_security_groups
+
+rm /tmp/.*.$$
